@@ -1,0 +1,152 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Logs
+*.log
+logs/
+!logs/.gitkeep
+
+# Node.js and Frontend
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+
+# Embedded repositories
+archive/LoanQA-Integration/
+
+# Archive directories (local backups)
+_archive/
+**/_archive/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.code-workspace
+.history/
+
+# Sensitive Files - API Keys, Credentials, Secrets
+service-account-key.json
+secrets/*.json
+secrets/.env
+!secrets/*.template
+!secrets/README.md
+!secrets/.gitignore
+*.pem
+*.key
+.env
+.env.local
+*.secret
+
+# API Keys and Credentials (CRITICAL - DO NOT COMMIT)
+**/OPENAI_API_KEY*
+**/ANTHROPIC_API_KEY*
+**/KIMI_API_KEY*
+**/service-account-key.json
+**/*credentials*.json
+**/*secret*.json
+
+# Database credentials
+**/POSTGRES_PASSWORD*
+**/REDIS_PASSWORD*
+**/MINIO_ROOT_PASSWORD*
+
+# Encryption keys
+**/SECRET_KEY*
+**/ENCRYPTION_KEY*
+**/AIRFLOW_SECRET_KEY*
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+
+# Runtime directories
+output/
+!output/.gitkeep
+uploads/
+!uploads/.gitkeep
+temp/
+!temp/.gitkeep
+data/raw/
+data/processed/
+
+# Output files (keep samples)
+output/*.pdf
+output/*.jpg
+output/*.jpeg
+output/*.png
+uploads/*.pdf
+uploads/*.jpg
+uploads/*.jpeg
+uploads/*.png
+temp/*
+!temp/.gitkeep
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+redis_data/
+minio_data/
+
+# Logs
+logs/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+test_files/*.pdf
+test_files/*.docx
+!test_files/.gitkeep
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Project specific
+uploads/*
+output/*
+temp/*
+!uploads/.gitkeep
+!output/.gitkeep
+!temp/.gitkeep

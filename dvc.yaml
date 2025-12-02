@@ -1,0 +1,74 @@
+# DVC Pipeline Configuration
+# Student Loan Document Extractor MLOps Pipeline
+
+stages:
+  data_acquisition:
+    cmd: python mlops/data_acquisition.py
+    deps:
+      - mlops/data_acquisition.py
+      - config/pipeline_config.yaml
+    outs:
+      - data/raw:
+          cache: true
+          persist: true
+    metrics:
+      - logs/data_acquisition_metrics.json:
+          cache: false
+    desc: "Fetch documents from MinIO storage and database"
+
+  preprocessing:
+    cmd: python mlops/preprocessing.py
+    deps:
+      - data/raw
+      - mlops/preprocessing.py
+      - config/pipeline_config.yaml
+    outs:
+      - data/processed:
+          cache: true
+          persist: true
+    metrics:
+      - logs/preprocessing_metrics.json:
+          cache: false
+    desc: "Preprocess documents with quality checks and standardization"
+
+  validation:
+    cmd: python mlops/validation.py
+    deps:
+      - data/processed
+      - mlops/validation.py
+      - config/pipeline_config.yaml
+    outs:
+      - logs/validation_results.json:
+          cache: false
+    metrics:
+      - logs/validation_metrics.json:
+          cache: false
+    desc: "Validate data schema and quality with Great Expectations"
+
+  anomaly_detection:
+    cmd: python mlops/anomaly_detection.py
+    deps:
+      - data/processed
+      - mlops/anomaly_detection.py
+      - config/pipeline_config.yaml
+    outs:
+      - logs/anomaly_report.json:
+          cache: false
+    metrics:
+      - logs/anomaly_metrics.json:
+          cache: false
+    desc: "Detect anomalies and outliers in processed data"
+
+  bias_detection:
+    cmd: python mlops/bias_detection.py
+    deps:
+      - data/processed
+      - mlops/bias_detection.py
+      - config/pipeline_config.yaml
+    outs:
+      - logs/bias_report.json:
+          cache: false
+    metrics:
+      - logs/bias_metrics.json:
+          cache: false
+    desc: "Analyze performance across document slices for bias"

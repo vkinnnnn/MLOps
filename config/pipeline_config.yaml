@@ -1,0 +1,212 @@
+# MLOps Pipeline Configuration
+# Student Loan Document Extractor
+
+# Data Acquisition Settings
+data_acquisition:
+  # MinIO/S3 Configuration
+  s3_endpoint: ${S3_ENDPOINT:-http://localhost:9000}
+  s3_access_key: ${S3_ACCESS_KEY:-minioadmin}
+  s3_secret_key: ${S3_SECRET_KEY:-minioadmin123}
+  s3_bucket_name: ${S3_BUCKET_NAME:-loan-documents}
+  
+  # Database Configuration
+  database_url: ${DATABASE_URL:-postgresql://loanuser:loanpass123@localhost:5432/loanextractor}
+  
+  # API Configuration
+  api_base_url: ${API_BASE_URL:-http://localhost:8000}
+  api_key: ${API_KEY:-}
+  
+  # Processing Settings
+  output_dir: data/raw
+  max_retries: 3
+  timeout_seconds: 30
+  batch_size: 10
+
+# Preprocessing Settings
+preprocessing:
+  input_dir: data/raw
+  output_dir: data/processed
+  min_resolution_dpi: 150
+  max_file_size_mb: 50
+  max_page_count: 50
+  target_format: pdf
+  
+  # Quality Thresholds
+  quality_thresholds:
+    min_clarity_score: 0.5
+    min_resolution: 150
+    max_file_size_bytes: 52428800  # 50MB
+
+# Validation Settings
+validation:
+  # Schema validation with Great Expectations
+  expectations_suite: loan_documents_suite
+  validation_results_dir: logs/validation
+  
+  # Data quality checks
+  checks:
+    - name: document_id_not_null
+      column: document_id
+      expectation: expect_column_values_to_not_be_null
+    
+    - name: accuracy_in_range
+      column: accuracy
+      expectation: expect_column_values_to_be_between
+      min_value: 0
+      max_value: 1
+    
+    - name: file_type_valid
+      column: file_type
+      expectation: expect_column_values_to_be_in_set
+      value_set: [pdf, jpeg, png, tiff]
+    
+    - name: page_count_valid
+      column: page_count
+      expectation: expect_column_values_to_be_between
+      min_value: 1
+      max_value: 50
+
+# Anomaly Detection Settings
+anomaly_detection:
+  enabled: true
+  
+  # Thresholds for anomaly triggers
+  thresholds:
+    min_accuracy: 0.85
+    max_processing_time_seconds: 30
+    max_error_rate: 0.05
+    min_confidence: 0.70
+  
+  # Outlier detection
+  outlier_detection:
+    method: isolation_forest
+    contamination: 0.05
+  
+  # Alert settings
+  alerts:
+    email_enabled: false
+    slack_enabled: false
+    log_enabled: true
+
+# Bias Detection Settings
+bias_detection:
+  enabled: true
+  
+  # Slicing dimensions
+  slices:
+    - name: document_type
+      column: loan_type
+      values: [education, home, personal, vehicle, gold, other]
+    
+    - name: lender
+      column: bank_name
+      min_samples: 10
+    
+    - name: file_format
+      column: file_type
+      values: [pdf, jpeg, png, tiff]
+    
+    - name: page_count_range
+      column: page_count
+      bins: [1, 10, 20, 50]
+  
+  # Fairness metrics
+  metrics:
+    - accuracy_parity
+    - equal_opportunity
+    - demographic_parity
+  
+  # Mitigation strategies
+  mitigation:
+    enabled: true
+    method: reweighting
+    target_accuracy_variance: 0.02
+
+# Airflow DAG Settings
+airflow:
+  # DAG scheduling
+  schedule_interval: "@daily"  # Run daily at midnight
+  start_date: 2025-01-01
+  catchup: false
+  max_active_runs: 1
+  
+  # Task settings
+  task_defaults:
+    retries: 3
+    retry_delay_seconds: 300
+    execution_timeout_seconds: 600
+    email_on_failure: false
+    email_on_retry: false
+  
+  # Resource allocation
+  resources:
+    pool: default_pool
+    priority_weight: 5
+
+# DVC Settings
+dvc:
+  # Remote storage
+  remote: minio
+  remote_url: s3://loan-documents/dvc-storage
+  
+  # Tracking
+  autostage: true
+  
+  # Cache directory
+  cache_dir: .dvc/cache
+
+# Logging Settings
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s"
+  
+  # Log files
+  files:
+    pipeline: logs/pipeline.log
+    data_acquisition: logs/data_acquisition.log
+    preprocessing: logs/preprocessing.log
+    validation: logs/validation.log
+    anomaly_detection: logs/anomaly_detection.log
+    bias_detection: logs/bias_detection.log
+  
+  # Rotation
+  rotation:
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+
+# Monitoring & Metrics
+monitoring:
+  # Metrics to track
+  metrics:
+    - name: document_processing_time
+      type: histogram
+      unit: seconds
+    
+    - name: extraction_accuracy
+      type: gauge
+      unit: percentage
+    
+    - name: documents_processed
+      type: counter
+      unit: count
+    
+    - name: pipeline_errors
+      type: counter
+      unit: count
+  
+  # Health checks
+  health_check_interval_seconds: 60
+
+# Performance Settings
+performance:
+  # Parallel processing
+  max_workers: 4
+  batch_processing_enabled: true
+  
+  # Caching
+  cache_enabled: true
+  cache_ttl_seconds: 3600
+  
+  # Optimization
+  optimize_images: true
+  compression_enabled: false

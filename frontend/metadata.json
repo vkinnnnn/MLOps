@@ -1,0 +1,7 @@
+{
+  "name": "LoanAI",
+  "description": "A comprehensive AI-powered IDE for loan document extraction and analysis, featuring voice interaction and deep document integration.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

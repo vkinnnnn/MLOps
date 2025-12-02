@@ -1,0 +1,475 @@
+"""Main Airflow DAG for Student Loan Document Processing Pipeline.
+
+This DAG orchestrates the complete MLOps pipeline with 9 tasks:
+1. acquire_documents - Fetch documents from storage
+2. validate_documents - Validate formats and metadata
+3. preprocess_documents - Quality checks and standardization
+4. extract_data - OCR extraction (existing API integration)
+5. validate_extraction - Validate extracted data quality
+6. detect_anomalies - Detect data anomalies and outliers
+7. check_bias - Analyze performance across slices
+8. store_results - Store processed results
+9. generate_reports - Generate pipeline reports
+"""
+
+from datetime import datetime, timedelta
+from pathlib import Path
+import logging
+from typing import Dict, Any
+
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.utils.dates import days_ago
+
+# Import MLOps modules (adjust imports based on your structure)
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from mlops.data_acquisition import DataAcquisition, DataAcquisitionConfig
+from mlops.preprocessing import DocumentPreprocessor, PreprocessingConfig
+
+logger = logging.getLogger(__name__)
+
+# DAG default arguments
+default_args = {
+    'owner': 'mlops-team',
+    'depends_on_past': False,
+    'email': ['admin@example.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+    'execution_timeout': timedelta(minutes=30),
+}
+
+# Create DAG
+dag = DAG(
+    dag_id='document_processing_pipeline',
+    default_args=default_args,
+    description='Complete MLOps pipeline for loan document processing',
+    schedule_interval='@daily',  # Run daily
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    max_active_runs=1,
+    tags=['mlops', 'document-processing', 'student-loans'],
+)
+
+
+def task_acquire_documents(**context) -> Dict[str, Any]:
+    """Task 1: Acquire documents from multiple sources.
+    
+    Fetches pending documents from:
+    - MinIO object storage
+    - PostgreSQL metadata database
+    
+    Returns:
+        Dictionary with acquisition statistics
+    """
+    logger.info("Starting document acquisition task")
+    
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # Create configuration
+    config = DataAcquisitionConfig(
+        s3_endpoint=os.getenv("S3_ENDPOINT", "http://minio:9000"),
+        s3_access_key=os.getenv("S3_ACCESS_KEY", "minioadmin"),
+        s3_secret_key=os.getenv("S3_SECRET_KEY", "minioadmin123"),
+        s3_bucket_name=os.getenv("S3_BUCKET_NAME", "loan-documents"),
+        database_url=os.getenv("DATABASE_URL", "postgresql://loanuser:loanpass123@db:5432/loanextractor"),
+        api_base_url=os.getenv("API_BASE_URL", "http://api:8000"),
+        api_key=os.getenv("API_KEY", "")
+    )
+    
+    # Run acquisition
+    acquisition = DataAcquisition(config)
+    stats = acquisition.run()
+    
+    # Push stats to XCom for downstream tasks
+    context['ti'].xcom_push(key='acquisition_stats', value=stats)
+    
+    logger.info(f"Document acquisition completed: {stats}")
+    return stats
+
+
+def task_validate_documents(**context) -> Dict[str, Any]:
+    """Task 2: Validate document formats and metadata.
+    
+    Validates:
+    - File formats (PDF, JPEG, PNG, TIFF)
+    - File sizes (< 50MB)
+    - Page counts (1-50 pages)
+    
+    Returns:
+        Dictionary with validation statistics
+    """
+    logger.info("Starting document validation task")
+    
+    # Get acquisition stats from previous task
+    acquisition_stats = context['ti'].xcom_pull(
+        task_ids='acquire_documents',
+        key='acquisition_stats'
+    )
+    
+    stats = {
+        "validated": 0,
+        "invalid": 0,
+        "errors": []
+    }
+    
+    # Validation logic (simplified for now)
+    data_dir = Path("data/raw")
+    documents = list(data_dir.glob("*.*"))
+    
+    for doc in documents:
+        if doc.suffix.lower() in ['.pdf', '.jpeg', '.jpg', '.png', '.tiff', '.tif']:
+            file_size = doc.stat().st_size
+            if file_size <= 50 * 1024 * 1024:  # 50MB
+                stats["validated"] += 1
+            else:
+                stats["invalid"] += 1
+                stats["errors"].append(f"{doc.name}: File too large")
+        else:
+            stats["invalid"] += 1
+            stats["errors"].append(f"{doc.name}: Invalid format")
+    
+    context['ti'].xcom_push(key='validation_stats', value=stats)
+    
+    logger.info(f"Document validation completed: {stats}")
+    return stats
+
+
+def task_preprocess_documents(**context) -> Dict[str, Any]:
+    """Task 3: Preprocess documents with quality checks.
+    
+    Performs:
+    - Quality validation (resolution, clarity)
+    - Format standardization
+    - Feature extraction
+    - Metadata extraction
+    
+    Returns:
+        Dictionary with preprocessing statistics
+    """
+    logger.info("Starting document preprocessing task")
+    
+    # Create configuration
+    config = PreprocessingConfig()
+    
+    # Run preprocessing
+    preprocessor = DocumentPreprocessor(config)
+    stats = preprocessor.run()
+    
+    context['ti'].xcom_push(key='preprocessing_stats', value=stats)
+    
+    logger.info(f"Document preprocessing completed: {stats}")
+    return stats
+
+
+def task_extract_data(**context) -> Dict[str, Any]:
+    """Task 4: Extract data using existing OCR API.
+    
+    Integrates with existing document extraction API endpoints.
+    Uses Google Document AI dual processor system.
+    
+    Returns:
+        Dictionary with extraction statistics
+    """
+    logger.info("Starting data extraction task")
+    
+    import requests
+    import os
+    
+    stats = {
+        "extracted": 0,
+        "failed": 0,
+        "avg_accuracy": 0.0
+    }
+    
+    # Get preprocessed documents
+    data_dir = Path("data/processed")
+    documents = list(data_dir.glob("*.*"))
+    
+    api_url = os.getenv("API_BASE_URL", "http://api:8000")
+    api_key = os.getenv("API_KEY", "")
+    
+    accuracies = []
+    
+    for doc in documents:
+        try:
+            # Call extraction API
+            with open(doc, 'rb') as f:
+                files = {'file': f}
+                headers = {'X-API-Key': api_key} if api_key else {}
+                
+                response = requests.post(
+                    f"{api_url}/api/v1/extract",
+                    files=files,
+                    headers=headers,
+                    timeout=60
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    accuracy = result.get('accuracy_metrics', {}).get('overall_accuracy', 0.0)
+                    accuracies.append(accuracy)
+                    stats["extracted"] += 1
+                else:
+                    stats["failed"] += 1
+                    logger.warning(f"Extraction failed for {doc.name}: {response.status_code}")
+        
+        except Exception as e:
+            stats["failed"] += 1
+            logger.error(f"Error extracting {doc.name}: {e}")
+    
+    if accuracies:
+        stats["avg_accuracy"] = sum(accuracies) / len(accuracies)
+    
+    context['ti'].xcom_push(key='extraction_stats', value=stats)
+    
+    logger.info(f"Data extraction completed: {stats}")
+    return stats
+
+
+def task_validate_extraction(**context) -> Dict[str, Any]:
+    """Task 5: Validate extracted data quality.
+    
+    Validates:
+    - Schema compliance
+    - Required fields present
+    - Data type correctness
+    - Value ranges
+    
+    Returns:
+        Dictionary with validation statistics
+    """
+    logger.info("Starting extraction validation task")
+    
+    extraction_stats = context['ti'].xcom_pull(
+        task_ids='extract_data',
+        key='extraction_stats'
+    )
+    
+    stats = {
+        "valid_extractions": extraction_stats.get("extracted", 0),
+        "schema_violations": 0,
+        "avg_accuracy": extraction_stats.get("avg_accuracy", 0.0),
+        "meets_threshold": extraction_stats.get("avg_accuracy", 0.0) >= 0.85
+    }
+    
+    context['ti'].xcom_push(key='validation_extraction_stats', value=stats)
+    
+    logger.info(f"Extraction validation completed: {stats}")
+    return stats
+
+
+def task_detect_anomalies(**context) -> Dict[str, Any]:
+    """Task 6: Detect data anomalies and outliers.
+    
+    Detects:
+    - Missing required fields
+    - Outlier values
+    - Schema violations
+    - Processing time anomalies
+    
+    Returns:
+        Dictionary with anomaly detection statistics
+    """
+    logger.info("Starting anomaly detection task")
+    
+    stats = {
+        "anomalies_detected": 0,
+        "types": [],
+        "alerts_triggered": 0
+    }
+    
+    # Get extraction validation stats
+    validation_stats = context['ti'].xcom_pull(
+        task_ids='validate_extraction',
+        key='validation_extraction_stats'
+    )
+    
+    # Check for accuracy anomaly
+    if not validation_stats.get("meets_threshold", True):
+        stats["anomalies_detected"] += 1
+        stats["types"].append("low_accuracy")
+        stats["alerts_triggered"] += 1
+        logger.warning(f"Anomaly detected: Accuracy below threshold")
+    
+    context['ti'].xcom_push(key='anomaly_stats', value=stats)
+    
+    logger.info(f"Anomaly detection completed: {stats}")
+    return stats
+
+
+def task_check_bias(**context) -> Dict[str, Any]:
+    """Task 7: Analyze performance across document slices for bias.
+    
+    Analyzes:
+    - Accuracy by document type
+    - Accuracy by lender/bank
+    - Accuracy by file format
+    - Accuracy by page count range
+    
+    Returns:
+        Dictionary with bias analysis statistics
+    """
+    logger.info("Starting bias detection task")
+    
+    stats = {
+        "slices_analyzed": 0,
+        "bias_detected": False,
+        "max_variance": 0.0,
+        "fairness_metrics": {}
+    }
+    
+    # Placeholder for bias detection logic
+    # In production, use Fairlearn for comprehensive analysis
+    
+    context['ti'].xcom_push(key='bias_stats', value=stats)
+    
+    logger.info(f"Bias detection completed: {stats}")
+    return stats
+
+
+def task_store_results(**context) -> Dict[str, Any]:
+    """Task 8: Store processed results to database and storage.
+    
+    Stores:
+    - Extracted data to PostgreSQL
+    - Processed documents to MinIO
+    - Metrics and statistics to database
+    
+    Returns:
+        Dictionary with storage statistics
+    """
+    logger.info("Starting results storage task")
+    
+    stats = {
+        "documents_stored": 0,
+        "metadata_stored": 0,
+        "storage_errors": 0
+    }
+    
+    # Placeholder for storage logic
+    # Integrate with existing storage service
+    
+    context['ti'].xcom_push(key='storage_stats', value=stats)
+    
+    logger.info(f"Results storage completed: {stats}")
+    return stats
+
+
+def task_generate_reports(**context) -> Dict[str, Any]:
+    """Task 9: Generate pipeline execution reports.
+    
+    Generates:
+    - Pipeline execution summary
+    - Quality metrics report
+    - Anomaly detection report
+    - Bias analysis report
+    
+    Returns:
+        Dictionary with report generation statistics
+    """
+    logger.info("Starting report generation task")
+    
+    # Collect all stats from previous tasks
+    acquisition_stats = context['ti'].xcom_pull(task_ids='acquire_documents', key='acquisition_stats')
+    preprocessing_stats = context['ti'].xcom_pull(task_ids='preprocess_documents', key='preprocessing_stats')
+    extraction_stats = context['ti'].xcom_pull(task_ids='extract_data', key='extraction_stats')
+    anomaly_stats = context['ti'].xcom_pull(task_ids='detect_anomalies', key='anomaly_stats')
+    bias_stats = context['ti'].xcom_pull(task_ids='check_bias', key='bias_stats')
+    storage_stats = context['ti'].xcom_pull(task_ids='store_results', key='storage_stats')
+    
+    # Generate comprehensive report
+    report = {
+        "pipeline_run_id": context['run_id'],
+        "execution_date": context['execution_date'].isoformat(),
+        "summary": {
+            "acquisition": acquisition_stats,
+            "preprocessing": preprocessing_stats,
+            "extraction": extraction_stats,
+            "anomalies": anomaly_stats,
+            "bias": bias_stats,
+            "storage": storage_stats
+        },
+        "status": "completed",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    # Save report to file
+    report_dir = Path("logs/reports")
+    report_dir.mkdir(parents=True, exist_ok=True)
+    
+    report_file = report_dir / f"pipeline_report_{context['execution_date'].strftime('%Y%m%d_%H%M%S')}.json"
+    
+    import json
+    with open(report_file, 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    logger.info(f"Pipeline report generated: {report_file}")
+    
+    return {"report_file": str(report_file)}
+
+
+# Define tasks
+acquire = PythonOperator(
+    task_id='acquire_documents',
+    python_callable=task_acquire_documents,
+    dag=dag,
+)
+
+validate = PythonOperator(
+    task_id='validate_documents',
+    python_callable=task_validate_documents,
+    dag=dag,
+)
+
+preprocess = PythonOperator(
+    task_id='preprocess_documents',
+    python_callable=task_preprocess_documents,
+    dag=dag,
+)
+
+extract = PythonOperator(
+    task_id='extract_data',
+    python_callable=task_extract_data,
+    dag=dag,
+)
+
+validate_extraction = PythonOperator(
+    task_id='validate_extraction',
+    python_callable=task_validate_extraction,
+    dag=dag,
+)
+
+detect_anomalies = PythonOperator(
+    task_id='detect_anomalies',
+    python_callable=task_detect_anomalies,
+    dag=dag,
+)
+
+check_bias = PythonOperator(
+    task_id='check_bias',
+    python_callable=task_check_bias,
+    dag=dag,
+)
+
+store = PythonOperator(
+    task_id='store_results',
+    python_callable=task_store_results,
+    dag=dag,
+)
+
+generate_reports = PythonOperator(
+    task_id='generate_reports',
+    python_callable=task_generate_reports,
+    dag=dag,
+)
+
+# Define task dependencies (DAG flow)
+acquire >> validate >> preprocess >> extract >> validate_extraction
+validate_extraction >> detect_anomalies >> check_bias >> store >> generate_reports

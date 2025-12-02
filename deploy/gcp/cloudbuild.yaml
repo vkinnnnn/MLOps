@@ -1,0 +1,120 @@
+# Google Cloud Build configuration for deploying to Cloud Run
+steps:
+  # Build API Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--target'
+      - 'api'
+      - '--tag'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-api:$SHORT_SHA'
+      - '--tag'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-api:latest'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+    id: 'build-api'
+
+  # Build Frontend Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--tag'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:$SHORT_SHA'
+      - '--tag'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:latest'
+      - '-f'
+      - 'deploy/gcp/Dockerfile.frontend'
+      - 'frontend'
+    id: 'build-frontend'
+
+  # Push API image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-api:$SHORT_SHA'
+    id: 'push-api'
+    waitFor: ['build-api']
+
+  # Push Frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:$SHORT_SHA'
+    id: 'push-frontend'
+    waitFor: ['build-frontend']
+
+  # Deploy API to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'loan-extractor-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-api:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'DATABASE_URL=$$DATABASE_URL,REDIS_URL=$$REDIS_URL,GOOGLE_APPLICATION_CREDENTIALS=/app/service-account-key.json'
+      - '--set-secrets'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=service-account-key:latest'
+    id: 'deploy-api'
+    waitFor: ['push-api']
+
+  # Deploy Frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'loan-extractor-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:$SHORT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--port'
+      - '3000'
+      - '--set-env-vars'
+      - 'VITE_API_URL=$$API_URL'
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend']
+
+images:
+  - 'gcr.io/$PROJECT_ID/loan-extractor-api:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/loan-extractor-api:latest'
+  - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/loan-extractor-frontend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'
+
+
+
+
+
+
+
+
+

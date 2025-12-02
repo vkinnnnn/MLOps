@@ -1,0 +1,246 @@
+# Alert Rules Configuration
+# Student Loan Document Extractor MLOps Pipeline
+
+# Alert Channels
+channels:
+  email:
+    enabled: false
+    smtp_server: smtp.gmail.com
+    smtp_port: 587
+    sender_email: ${ALERT_EMAIL_SENDER}
+    recipients:
+      - admin@example.com
+    use_tls: true
+  
+  slack:
+    enabled: false
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    channel: "#mlops-alerts"
+    username: "MLOps Alert Bot"
+    icon_emoji: ":warning:"
+  
+  log:
+    enabled: true
+    log_file: logs/alerts.log
+    log_level: WARNING
+
+# Alert Rules
+rules:
+  # Data Quality Alerts
+  - name: low_extraction_accuracy
+    description: "Extraction accuracy dropped below threshold"
+    condition:
+      metric: extraction_accuracy
+      operator: less_than
+      threshold: 0.85
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 30
+  
+  - name: high_processing_time
+    description: "Document processing time exceeded threshold"
+    condition:
+      metric: processing_time_seconds
+      operator: greater_than
+      threshold: 30
+    severity: medium
+    channels: [slack, log]
+    cooldown_minutes: 15
+  
+  - name: high_error_rate
+    description: "Error rate exceeded acceptable threshold"
+    condition:
+      metric: error_rate
+      operator: greater_than
+      threshold: 0.05
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 15
+  
+  # Schema Validation Alerts
+  - name: schema_validation_failure
+    description: "Schema validation failed for dataset"
+    condition:
+      metric: schema_validation_success
+      operator: equals
+      threshold: false
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 60
+  
+  - name: missing_required_fields
+    description: "Required fields are missing in documents"
+    condition:
+      metric: missing_field_percentage
+      operator: greater_than
+      threshold: 0.10
+    severity: medium
+    channels: [slack, log]
+    cooldown_minutes: 30
+  
+  # Anomaly Detection Alerts
+  - name: data_drift_detected
+    description: "Significant data drift detected in features"
+    condition:
+      metric: drift_score
+      operator: greater_than
+      threshold: 0.15
+    severity: medium
+    channels: [slack, log]
+    cooldown_minutes: 120
+  
+  - name: outliers_detected
+    description: "High number of outliers detected"
+    condition:
+      metric: outlier_percentage
+      operator: greater_than
+      threshold: 0.10
+    severity: low
+    channels: [log]
+    cooldown_minutes: 60
+  
+  # Bias Detection Alerts
+  - name: accuracy_disparity
+    description: "Significant accuracy disparity across document types"
+    condition:
+      metric: accuracy_variance
+      operator: greater_than
+      threshold: 0.05
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 240
+  
+  - name: bias_threshold_exceeded
+    description: "Fairness metric exceeded acceptable bias threshold"
+    condition:
+      metric: demographic_parity_difference
+      operator: greater_than
+      threshold: 0.10
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 240
+  
+  # System Health Alerts
+  - name: pipeline_failure
+    description: "Pipeline execution failed"
+    condition:
+      metric: pipeline_status
+      operator: equals
+      threshold: "failed"
+    severity: critical
+    channels: [email, slack, log]
+    cooldown_minutes: 5
+  
+  - name: database_connection_failure
+    description: "Failed to connect to database"
+    condition:
+      metric: database_connection_success
+      operator: equals
+      threshold: false
+    severity: critical
+    channels: [email, slack, log]
+    cooldown_minutes: 10
+  
+  - name: storage_connection_failure
+    description: "Failed to connect to object storage"
+    condition:
+      metric: storage_connection_success
+      operator: equals
+      threshold: false
+    severity: critical
+    channels: [email, slack, log]
+    cooldown_minutes: 10
+  
+  - name: api_connection_failure
+    description: "Failed to connect to API"
+    condition:
+      metric: api_connection_success
+      operator: equals
+      threshold: false
+    severity: high
+    channels: [email, slack, log]
+    cooldown_minutes: 10
+  
+  # Performance Alerts
+  - name: low_throughput
+    description: "Document processing throughput below expected rate"
+    condition:
+      metric: documents_per_hour
+      operator: less_than
+      threshold: 100
+    severity: medium
+    channels: [slack, log]
+    cooldown_minutes: 60
+  
+  - name: high_memory_usage
+    description: "Memory usage exceeded threshold"
+    condition:
+      metric: memory_usage_percentage
+      operator: greater_than
+      threshold: 85
+    severity: medium
+    channels: [slack, log]
+    cooldown_minutes: 30
+  
+  - name: high_cpu_usage
+    description: "CPU usage exceeded threshold"
+    condition:
+      metric: cpu_usage_percentage
+      operator: greater_than
+      threshold: 90
+    severity: low
+    channels: [log]
+    cooldown_minutes: 15
+
+# Alert Severity Levels
+severity_levels:
+  critical:
+    priority: 1
+    require_acknowledgment: true
+    escalation_minutes: 15
+  
+  high:
+    priority: 2
+    require_acknowledgment: true
+    escalation_minutes: 30
+  
+  medium:
+    priority: 3
+    require_acknowledgment: false
+    escalation_minutes: 60
+  
+  low:
+    priority: 4
+    require_acknowledgment: false
+    escalation_minutes: null
+
+# Alert Templates
+templates:
+  email_subject: "[{severity}] MLOps Alert: {rule_name}"
+  
+  email_body: |
+    Alert: {rule_name}
+    Severity: {severity}
+    Description: {description}
+    
+    Condition:
+    - Metric: {metric}
+    - Current Value: {current_value}
+    - Threshold: {threshold}
+    
+    Timestamp: {timestamp}
+    
+    This is an automated alert from the MLOps Pipeline.
+  
+  slack_message: |
+    :warning: *MLOps Alert - {severity}*
+    
+    *Alert:* {rule_name}
+    *Description:* {description}
+    
+    *Details:*
+    • Metric: `{metric}`
+    • Current Value: `{current_value}`
+    • Threshold: `{threshold}`
+    
+    *Time:* {timestamp}
