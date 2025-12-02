@@ -2,7 +2,7 @@
 
 **Version:** 2.0.0  
 **Status:** Production Ready  
-**Framework:** Following KIRO Global Steering Guidelines  
+
 
 ## Overview
 
